@@ -1,0 +1,109 @@
+name: Build Desktop Bundles
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CI: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-2022
+            rust-target: x86_64-pc-windows-msvc
+            tauri-args: --target x86_64-pc-windows-msvc --bundles nsis
+          - name: Ubuntu x64
+            os: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+            tauri-args: --target x86_64-unknown-linux-gnu --bundles deb,appimage
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libwebkit2gtk-4.1-dev
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          APP_VERSION="$(node -e "console.log(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)")"
+          if [ "v${APP_VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match app version v${APP_VERSION}"
+            exit 1
+          fi
+
+      - name: Build and upload workflow artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: pnpm tauri
+          args: ${{ matrix.tauri-args }}
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: "[name]-[version]-[platform]-[arch]-[bundle]"
+
+      - name: Build and publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: pnpm tauri
+          args: ${{ matrix.tauri-args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: CheckHosts ${{ github.ref_name }}
+          releaseBody: |
+            自动构建产物：
+            - Windows x64: NSIS 安装包
+            - Ubuntu x64: DEB 和 AppImage
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generateReleaseNotes: true
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: "[name]-[version]-[platform]-[arch]-[bundle]"
+          releaseAssetNamePattern: "[name]-[version]-[platform]-[arch][setup][ext]"
