@@ -164,6 +164,32 @@ function extractErrorMessage(error: unknown) {
   return "操作失败，请重试。";
 }
 
+function detectPlatformClass() {
+  const navigatorWithUAData = navigator as Navigator & {
+    userAgentData?: {
+      platform?: string;
+    };
+  };
+  const platform =
+    navigatorWithUAData.userAgentData?.platform ||
+    navigator.platform ||
+    navigator.userAgent;
+
+  if (/windows/i.test(platform)) {
+    return "platform-windows";
+  }
+
+  if (/mac/i.test(platform)) {
+    return "platform-macos";
+  }
+
+  if (/linux/i.test(platform)) {
+    return "platform-linux";
+  }
+
+  return "platform-other";
+}
+
 function App() {
   const [groups, setGroups] = useState<HostGroup[]>(() => loadGroups());
   const [hostsStatus, setHostsStatus] = useState<HostsStatus | null>(null);
@@ -174,6 +200,15 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
   }, [groups]);
+
+  useEffect(() => {
+    const platformClass = detectPlatformClass();
+    document.documentElement.classList.add(platformClass);
+
+    return () => {
+      document.documentElement.classList.remove(platformClass);
+    };
+  }, []);
 
   useEffect(() => {
     void refreshHosts(loadGroups());
