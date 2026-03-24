@@ -1,0 +1,49 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="88" y1="76" x2="432" y2="436" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1B2532" />
+      <stop offset="1" stop-color="#3A5066" />
+    </linearGradient>
+    <linearGradient id="panel" x1="134" y1="130" x2="376" y2="338" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFD" />
+      <stop offset="1" stop-color="#D4E0EA" />
+    </linearGradient>
+    <linearGradient id="badge" x1="314" y1="300" x2="405" y2="393" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4C55D" />
+      <stop offset="1" stop-color="#D98A2E" />
+    </linearGradient>
+    <filter id="shadow" x="104" y="112" width="304" height="270" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix" />
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+      <feOffset dy="16" />
+      <feGaussianBlur stdDeviation="18" />
+      <feComposite in2="hardAlpha" operator="out" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0941176 0 0 0 0 0.145098 0 0 0 0 0.211765 0 0 0 0.18 0" />
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1" />
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape" />
+    </filter>
+  </defs>
+
+  <rect x="48" y="48" width="416" height="416" rx="112" fill="url(#bg)" />
+  <path d="M116 134C116 117.431 129.431 104 146 104H272L303.213 135.213C308.838 140.838 316.468 144 324.426 144H366C382.569 144 396 157.431 396 174V284C396 300.569 382.569 314 366 314H146C129.431 314 116 300.569 116 284V134Z" fill="#597287" fill-opacity="0.12" />
+
+  <g filter="url(#shadow)">
+    <rect x="128" y="122" width="256" height="204" rx="44" fill="url(#panel)" />
+    <rect x="128" y="122" width="256" height="50" rx="44" fill="#DFE8F0" />
+    <circle cx="164" cy="147" r="10" fill="#C95C4D" />
+    <circle cx="192" cy="147" r="10" fill="#E0A63E" />
+    <circle cx="220" cy="147" r="10" fill="#6D8FAF" />
+
+    <rect x="162" y="198" width="80" height="18" rx="9" fill="#5E758C" />
+    <rect x="254" y="198" width="86" height="18" rx="9" fill="#93A7BB" />
+    <rect x="162" y="234" width="54" height="18" rx="9" fill="#5E758C" />
+    <rect x="228" y="234" width="112" height="18" rx="9" fill="#93A7BB" />
+    <rect x="162" y="270" width="98" height="18" rx="9" fill="#5E758C" />
+    <rect x="272" y="270" width="68" height="18" rx="9" fill="#93A7BB" />
+  </g>
+
+  <g>
+    <rect x="300" y="292" width="116" height="116" rx="38" fill="url(#badge)" />
+    <path d="M330 350L353 373L389 329" stroke="#203040" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

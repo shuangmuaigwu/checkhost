@@ -353,19 +353,59 @@ fn hosts_path() -> PathBuf {
     }
 }
 
-fn create_temp_hosts_file(content: &str) -> Result<PathBuf, String> {
+fn create_temp_file(content: &str, extension: &str) -> Result<PathBuf, String> {
     let file_name = format!(
-        "checkhosts-{}.tmp",
+        "checkhosts-{}.{}",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| format!("生成临时文件名失败: {error}"))?
-            .as_millis()
+            .as_millis(),
+        extension
     );
     let path = std::env::temp_dir().join(file_name);
 
-    fs::write(&path, content).map_err(|error| format!("写入临时 hosts 文件失败: {error}"))?;
+    fs::write(&path, content).map_err(|error| format!("写入临时文件失败: {error}"))?;
 
     Ok(path)
+}
+
+fn create_temp_hosts_file(content: &str) -> Result<PathBuf, String> {
+    create_temp_file(content, "tmp")
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn powershell_single_quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn render_windows_hosts_update_script(temp_path: &Path, host_path: &Path) -> String {
+    let temp = powershell_single_quote_literal(temp_path.to_string_lossy().as_ref());
+    let hosts = powershell_single_quote_literal(host_path.to_string_lossy().as_ref());
+
+    format!(
+        "$ErrorActionPreference = 'Stop'\nif (Test-Path -LiteralPath {hosts}) {{ Set-ItemProperty -LiteralPath {hosts} -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue }}\nCopy-Item -LiteralPath {temp} -Destination {hosts} -Force\n& ipconfig /flushdns | Out-Null\n",
+    )
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn build_windows_elevation_command(script_path: &Path) -> (String, Vec<String>) {
+    let script = powershell_single_quote_literal(script_path.to_string_lossy().as_ref());
+    let command = format!(
+        "$process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', {script}); exit $process.ExitCode"
+    );
+
+    (
+        "powershell.exe".into(),
+        vec![
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-ExecutionPolicy".into(),
+            "Bypass".into(),
+            "-Command".into(),
+            command,
+        ],
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -432,8 +472,32 @@ fn write_hosts_file_with_admin(host_path: &Path, content: &str) -> Result<(), St
 }
 
 #[cfg(target_os = "windows")]
-fn write_hosts_file_with_admin(_host_path: &Path, _content: &str) -> Result<(), String> {
-    Err("当前版本暂未实现 Windows hosts 写入，请在 macOS 或 Linux 下使用。".into())
+fn write_hosts_file_with_admin(host_path: &Path, content: &str) -> Result<(), String> {
+    let temp_path = create_temp_hosts_file(content)?;
+    let script = render_windows_hosts_update_script(&temp_path, host_path);
+    let script_path = create_temp_file(&script, "ps1")?;
+    let (program, args) = build_windows_elevation_command(&script_path);
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|error| format!("调用 Windows 管理员权限失败: {error}"))?;
+
+    let _ = fs::remove_file(&script_path);
+    let _ = fs::remove_file(&temp_path);
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+
+        if detail.is_empty() {
+            Err("管理员写入 hosts 失败。".into())
+        } else {
+            Err(format!("管理员写入 hosts 失败: {detail}"))
+        }
+    }
 }
 
 fn shell_quote(value: &str) -> String {
@@ -452,4 +516,49 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![get_hosts_status, apply_hosts])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn powershell_literal_escapes_single_quotes() {
+        let quoted = powershell_single_quote_literal(r"C:\Users\O'Brien\hosts");
+
+        assert_eq!(quoted, r"'C:\Users\O''Brien\hosts'");
+    }
+
+    #[test]
+    fn windows_hosts_update_script_uses_literal_copy_and_flushdns() {
+        let script = render_windows_hosts_update_script(
+            Path::new(r"C:\Temp\checkhosts.tmp"),
+            Path::new(r"C:\Windows\System32\drivers\etc\hosts"),
+        );
+
+        assert!(script.contains("Copy-Item -LiteralPath"));
+        assert!(script.contains("Set-ItemProperty -LiteralPath"));
+        assert!(script.contains(r"& ipconfig /flushdns"));
+        assert!(script.contains(r"'C:\Temp\checkhosts.tmp'"));
+        assert!(script.contains(r"'C:\Windows\System32\drivers\etc\hosts'"));
+    }
+
+    #[test]
+    fn windows_elevation_command_runs_script_via_runas() {
+        let (program, args) =
+            build_windows_elevation_command(Path::new(r"C:\Temp\checkhosts-admin.ps1"));
+
+        assert_eq!(program, "powershell.exe");
+        assert_eq!(
+            args,
+            vec![
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "$process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\Temp\\checkhosts-admin.ps1'); exit $process.ExitCode",
+            ]
+        );
+    }
 }
